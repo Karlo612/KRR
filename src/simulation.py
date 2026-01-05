@@ -3,13 +3,16 @@ simulation.py
 
 Simulation engine for an inventory-control MDP.
 
-This extended version provides:
-- full cost breakdown (holding, shortage, ordering)
-- per-step cost trajectory
-- per-step reward trajectory
-- inventory trajectory
-- demand trajectory
-- service-level statistics
+This module provides functionality to simulate inventory system dynamics
+under a given policy and collect comprehensive performance metrics.
+
+Metrics provided:
+- Total and average costs
+- Cost component breakdown (holding, shortage, ordering)
+- Per-step cost and reward trajectories
+- Inventory and demand trajectories
+- Service level (fulfillment rate)
+- Action sequences
 """
 
 from __future__ import annotations
@@ -29,39 +32,81 @@ def simulate_policy(
     """
     Simulate T periods of the inventory system using the provided policy.
 
+    The simulation follows this process for each time step:
+    1. Observe current inventory state s_t
+    2. Select action a_t = policy_fn(s_t)
+    3. Update inventory: inv_pre = min(max_inventory, s_t + a_t)
+    4. Sample demand d_t from demand distribution
+    5. Update inventory: s_{t+1} = max(0, inv_pre - d_t)
+    6. Compute costs: holding, shortage, ordering
+    7. Record metrics
+
     Parameters
     ----------
     mdp : InventoryMDP
-    policy_fn : callable
-        policy_fn(s) -> action a
-    T : int
-        Number of time steps.
-    initial_state : int
-        Starting inventory state.
-    seed : int or None
-        Random seed.
+        MDP instance defining the inventory system dynamics.
+    policy_fn : Callable[[int], int]
+        Policy function mapping state to action.
+        Must satisfy: 0 <= policy_fn(s) <= max_order for all valid states s.
+    T : int, optional
+        Number of time steps to simulate. Default is 200.
+        Must be > 0.
+    initial_state : int, optional
+        Starting inventory state. Default is 0.
+        Must satisfy: 0 <= initial_state <= max_inventory.
+    seed : int | None, optional
+        Random seed for reproducibility. Default is None (non-deterministic).
 
     Returns
     -------
-    metrics : dict
-        Contains:
-        - total_reward
-        - total_cost
-        - avg_cost_per_period
-        - total_demand
-        - fulfilled_demand
-        - unmet_demand
-        - service_level
-        - per_step_costs
-        - per_step_holding
-        - per_step_shortage
-        - per_step_ordering
-        - rewards
-        - inventory_levels
-        - demand_sequence
-        - actions
-        - T
+    metrics : Dict[str, np.ndarray | float | int]
+        Dictionary containing:
+        - total_reward (float): Sum of rewards over T periods
+        - total_cost (float): Sum of costs over T periods
+        - avg_cost_per_period (float): Average cost per period
+        - total_demand (int): Total demand over T periods
+        - fulfilled_demand (int): Total fulfilled demand
+        - unmet_demand (int): Total unmet demand (shortages)
+        - service_level (float): Fulfillment rate (fulfilled/total)
+        - per_step_costs (np.ndarray): Cost at each time step, shape (T,)
+        - per_step_holding (np.ndarray): Holding cost at each step, shape (T,)
+        - per_step_shortage (np.ndarray): Shortage cost at each step, shape (T,)
+        - per_step_ordering (np.ndarray): Ordering cost at each step, shape (T,)
+        - rewards (np.ndarray): Reward at each step, shape (T,)
+        - inventory_levels (np.ndarray): Inventory at each step, shape (T+1,)
+        - demand_sequence (np.ndarray): Demand at each step, shape (T,)
+        - actions (np.ndarray): Action at each step, shape (T,)
+        - T (int): Number of time steps
+
+    Raises
+    ------
+    ValueError
+        If initial_state is invalid or T <= 0.
+
+    Examples
+    --------
+    >>> from src.config import default_params
+    >>> from src.mdp_inventory import InventoryMDP
+    >>> from src.solvers import value_iteration
+    >>> 
+    >>> params = default_params()
+    >>> mdp = InventoryMDP(params)
+    >>> V, policy, _ = value_iteration(mdp)
+    >>> 
+    >>> def policy_fn(s): return int(policy[s])
+    >>> metrics = simulate_policy(mdp, policy_fn, T=100, seed=42)
+    >>> print(f"Average cost: {metrics['avg_cost_per_period']:.2f}")
     """
+    # Validate inputs
+    if T <= 0:
+        raise ValueError(f"T must be > 0, got {T}")
+    if initial_state < 0 or initial_state > mdp.params.max_inventory:
+        raise ValueError(
+            f"initial_state must be in [0, {mdp.params.max_inventory}], "
+            f"got {initial_state}"
+        )
+    
+    # Initialize random number generator
     if seed is not None:
         rng = np.random.default_rng(seed)
     else:
