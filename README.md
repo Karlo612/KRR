@@ -20,8 +20,6 @@ The project follows the coursework structure for:
 
 ### Utility Modules
 - `src/validation.py` – parameter and MDP structure validation  
-- `src/plotting.py` – visualization functions for results  
-- `src/export.py` – export results to CSV/JSON formats  
 
 ### Experiments
 - `notebooks/experiments.ipynb` – experiments and plots  
@@ -65,8 +63,6 @@ print(f"Service level: {metrics['service_level']:.4f}")
 - **Baseline Policies**: (s,S), fixed-order, and reorder-to-level heuristics
 - **Simulation**: Comprehensive metrics collection and analysis
 - **Validation**: Parameter and structure validation functions
-- **Visualization**: Plotting functions for policies, value functions, and trajectories
-- **Export**: CSV and JSON export for results
 - **Testing**: Comprehensive unit test suite
 
 ## Running Tests
@@ -79,7 +75,6 @@ pytest tests/
 
 ```python
 from src.baseline_policies import make_sS_policy
-from src.plotting import plot_cost_comparison
 
 # Optimal policy
 V, policy_opt, _ = value_iteration(mdp)
@@ -93,8 +88,10 @@ metrics_opt = simulate_policy(mdp, opt_policy, T=200, seed=42)
 metrics_base = simulate_policy(mdp, baseline, T=200, seed=42)
 
 # Compare
-metrics_dict = {'Optimal': metrics_opt, 'Baseline': metrics_base}
-plot_cost_comparison(metrics_dict)
+print(f"Optimal avg cost: {metrics_opt['avg_cost_per_period']:.4f}")
+print(f"Baseline avg cost: {metrics_base['avg_cost_per_period']:.4f}")
+print(f"Optimal service level: {metrics_opt['service_level']:.4f}")
+print(f"Baseline service level: {metrics_base['service_level']:.4f}")
 ```
 
 ## Documentation

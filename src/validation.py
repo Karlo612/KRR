@@ -5,7 +5,6 @@ Validation functions for MDP parameters and structure.
 """
 
 from __future__ import annotations
-from typing import Dict
 import numpy as np
 from .mdp_inventory import InventoryParams, InventoryMDP
 
