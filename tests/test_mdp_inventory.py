@@ -88,7 +88,7 @@ class TestInventoryMDP:
         assert mdp.num_states() == 6  # 0 to 5
         assert mdp.num_actions() == 4  # 0 to 3
         assert mdp.P.shape == (6, 4, 6)
-        assert mdp.R.shape == (6, 4, 6)
+        assert mdp.R_sa.shape == (6, 4)
     
     def test_transition_probabilities_sum_to_one(self, default_params):
         """Test that transition probabilities sum to 1."""
@@ -130,7 +130,7 @@ class TestInventoryMDP:
         for s in [0, 2, 5]:
             for a in [0, 1, 3]:
                 # Rewards should be non-positive (costs are non-negative)
-                assert np.all(mdp.R[s, a, :] <= 0)
+                assert mdp.R_sa[s, a] <= 0
 
 
 class TestMDPTransitions:

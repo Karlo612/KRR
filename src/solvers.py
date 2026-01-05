@@ -10,7 +10,7 @@ Dynamic programming algorithms for finite MDPs:
 - Policy Iteration: Alternates between policy evaluation and improvement
 
 All algorithms operate on an InventoryMDP instance and its
-precomputed P[s, a, s'] and R[s, a, s'] matrices.
+precomputed P[s, a, s'] and R_sa[s, a] matrices.
 
 Mathematical Background:
     Value Iteration solves: V*(s) = max_a [R(s,a) + γ Σ_s' P(s'|s,a) V*(s')]
@@ -18,6 +18,7 @@ Mathematical Background:
 """
 
 from typing import Tuple
+import warnings
 import numpy as np
 from .mdp_inventory import InventoryMDP
 
@@ -33,14 +34,14 @@ def value_iteration(
     Value iteration iteratively updates the value function using the Bellman
     optimality equation until convergence:
     
-        V_{k+1}(s) = max_a [Σ_s' P(s'|s,a) (R(s,a,s') + γ V_k(s'))]
+        V_{k+1}(s) = max_a [R_sa(s,a) + γ Σ_s' P(s'|s,a) V_k(s')]
     
     The algorithm terminates when ||V_{k+1} - V_k||_∞ < tol.
     
     Parameters
     ----------
     mdp : InventoryMDP
-        MDP instance with precomputed P and R matrices.
+        MDP instance with precomputed P and R_sa matrices.
     tol : float, optional
         Convergence tolerance. Default is 1e-6.
     max_iter : int, optional
@@ -58,14 +59,21 @@ def value_iteration(
     Notes
     -----
     The policy is extracted as: π*(s) = argmax_a Q(s,a)
-    where Q(s,a) = Σ_s' P(s'|s,a) (R(s,a,s') + γ V*(s'))
+    where Q(s,a) = R_sa(s,a) + γ Σ_s' P(s'|s,a) V*(s')
     """
 
     nS = mdp.num_states()
     nA = mdp.num_actions()
     γ = mdp.discount
+    
+    # Shape validation guards
+    assert mdp.P.shape == (nS, nA, nS), \
+        f"P shape {mdp.P.shape} != expected ({nS}, {nA}, {nS})"
+    assert mdp.R_sa.shape == (nS, nA), \
+        f"R_sa shape {mdp.R_sa.shape} != expected ({nS}, {nA})"
+    
     P = mdp.P
-    R = mdp.R
+    R_sa = mdp.R_sa
 
     # Initialize value function
     V = np.zeros(nS)
@@ -79,8 +87,8 @@ def value_iteration(
             # Compute Q-values for all actions
             Q_sa = np.zeros(nA)
             for a in range(nA):
-                # Q(s,a) = Σ_s' P(s'|s,a) (R(s,a,s') + γ V(s'))
-                Q_sa[a] = np.sum(P[s, a, :] * (R[s, a, :] + γ * V))
+                # Q(s,a) = R_sa(s,a) + γ Σ_s' P(s'|s,a) V(s')
+                Q_sa[a] = R_sa[s, a] + γ * np.sum(P[s, a, :] * V)
             
             # Greedy action selection
             best_a = int(np.argmax(Q_sa))
@@ -94,6 +102,13 @@ def value_iteration(
         V = V_new
 
     # Return result even if not converged (reached max_iter)
+    final_residual = np.max(np.abs(V_new - V))
+    warnings.warn(
+        f"Value iteration did not converge after {max_iter} iterations. "
+        f"Final residual: {final_residual:.2e} > tol={tol:.2e}. "
+        f"Consider increasing max_iter or checking convergence criteria.",
+        RuntimeWarning
+    )
     return V, policy, max_iter
 
 
@@ -112,7 +127,7 @@ def policy_evaluation(mdp: InventoryMDP, policy: np.ndarray) -> np.ndarray:
     Parameters
     ----------
     mdp : InventoryMDP
-        MDP instance with precomputed P and R matrices.
+        MDP instance with precomputed P and R_sa matrices.
     policy : np.ndarray
         Policy array, shape (n_states,). policy[s] = action in state s.
     
@@ -128,9 +143,17 @@ def policy_evaluation(mdp: InventoryMDP, policy: np.ndarray) -> np.ndarray:
     """
 
     nS = mdp.num_states()
+    nA = mdp.num_actions()
     γ = mdp.discount
+    
+    # Shape validation guards
+    assert mdp.P.shape == (nS, nA, nS), \
+        f"P shape {mdp.P.shape} != expected ({nS}, {nA}, {nS})"
+    assert mdp.R_sa.shape == (nS, nA), \
+        f"R_sa shape {mdp.R_sa.shape} != expected ({nS}, {nA})"
+    
     P = mdp.P
-    R = mdp.R
+    R_sa = mdp.R_sa
 
     # Validate policy
     if policy.shape != (nS,):
@@ -148,8 +171,8 @@ def policy_evaluation(mdp: InventoryMDP, policy: np.ndarray) -> np.ndarray:
         # P^π(s, s') = P(s' | s, π(s))
         P_pi[s, :] = P[s, a, :]
         
-        # R^π(s) = Σ_s' P(s' | s, π(s)) R(s, π(s), s')
-        R_pi[s] = np.sum(P[s, a, :] * R[s, a, :])
+        # R^π(s) = R_sa(s, π(s))
+        R_pi[s] = R_sa[s, a]
 
     # Solve (I - γ P^π) V^π = R^π
     A = np.eye(nS) - γ * P_pi
@@ -174,7 +197,7 @@ def policy_iteration(
     Parameters
     ----------
     mdp : InventoryMDP
-        MDP instance with precomputed P and R matrices.
+        MDP instance with precomputed P and R_sa matrices.
     max_iter : int, optional
         Maximum number of policy iterations. Default is 1,000.
     
@@ -196,8 +219,15 @@ def policy_iteration(
     nS = mdp.num_states()
     nA = mdp.num_actions()
     γ = mdp.discount
+    
+    # Shape validation guards
+    assert mdp.P.shape == (nS, nA, nS), \
+        f"P shape {mdp.P.shape} != expected ({nS}, {nA}, {nS})"
+    assert mdp.R_sa.shape == (nS, nA), \
+        f"R_sa shape {mdp.R_sa.shape} != expected ({nS}, {nA})"
+    
     P = mdp.P
-    R = mdp.R
+    R_sa = mdp.R_sa
 
     # Initialize with zero policy (or could use random)
     policy = np.zeros(nS, dtype=int)
@@ -214,8 +244,8 @@ def policy_iteration(
             # Compute Q-values for all actions
             Q_sa = np.zeros(nA)
             for a in range(nA):
-                # Q(s,a) = Σ_s' P(s'|s,a) (R(s,a,s') + γ V^π(s'))
-                Q_sa[a] = np.sum(P[s, a, :] * (R[s, a, :] + γ * V))
+                # Q(s,a) = R_sa(s,a) + γ Σ_s' P(s'|s,a) V^π(s')
+                Q_sa[a] = R_sa[s, a] + γ * np.sum(P[s, a, :] * V)
 
             # Greedy improvement
             new_a = int(np.argmax(Q_sa))
@@ -229,4 +259,9 @@ def policy_iteration(
             return V, policy, it + 1
 
     # Return result even if not converged
+    warnings.warn(
+        f"Policy iteration did not converge after {max_iter} iterations. "
+        f"Consider increasing max_iter.",
+        RuntimeWarning
+    )
     return V, policy, max_iter

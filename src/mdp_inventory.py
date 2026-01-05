@@ -19,11 +19,13 @@ Mathematical Formulation:
     - Transition probabilities: P(s' | s, a)
       Determined by stochastic demand distribution.
     
-    - Reward function: R(s, a, s') = -(holding_cost * s' + shortage_cost * unmet + order_cost * a)
-      Negative of total cost (cost minimization problem).
+    - Reward function: R_sa(s, a) = expected immediate reward for (s, a)
+      Computed as: R_sa(s, a) = Σ_d p(d) * (-(holding_cost * s' + shortage_cost * unmet + order_cost * a))
+      where s' is the next state after demand d, and unmet = max(0, d - (s + a)).
+      Negative of expected cost (cost minimization → reward maximization).
     
     - Objective: Find policy π* that maximizes expected discounted reward:
-      V^π(s) = E[Σ_{t=0}^∞ γ^t R(s_t, a_t, s_{t+1}) | s_0 = s, π]
+      V^π(s) = E[Σ_{t=0}^∞ γ^t R_sa(s_t, a_t) | s_0 = s, π]
 
 States:
     s ∈ {0, 1, ..., max_inventory}  – current stock level
@@ -77,7 +79,7 @@ class InventoryMDP:
     
     This class implements a hospital drug inventory management system as an MDP.
     It precomputes transition probability matrix P[s, a, s'] and expected reward
-    matrix R[s, a, s'] for efficient dynamic programming algorithms.
+    matrix R_sa[s, a] for efficient dynamic programming algorithms.
     
     Attributes
     ----------
@@ -98,9 +100,9 @@ class InventoryMDP:
     P : np.ndarray
         Transition probability matrix, shape (M+1, K+1, M+1).
         P[s, a, s'] = probability of transitioning from state s to s' under action a.
-    R : np.ndarray
-        Expected reward matrix, shape (M+1, K+1, M+1).
-        R[s, a, s'] = expected immediate reward for transition (s, a) → s'.
+    R_sa : np.ndarray
+        Expected immediate reward per (s,a) pair, shape (M+1, K+1).
+        R_sa[s, a] = expected immediate reward for taking action a in state s.
     """
 
     def __init__(self, params: InventoryParams, validate: bool = True):
@@ -145,17 +147,17 @@ class InventoryMDP:
         probs /= prob_sum
         self.demand_probs = dict(zip(self.demand_support, probs))
 
-        # Allocate P and R matrices
+        # Allocate P and R_sa matrices
         # P[s, a, s']: probability of transition from state s to s' under action a
-        # R[s, a, s']: expected immediate reward for transition (s, a) → s'
+        # R_sa[s, a]: expected immediate reward for taking action a in state s
         self.P = np.zeros((self.M + 1, self.K + 1, self.M + 1), dtype=float)
-        self.R = np.zeros((self.M + 1, self.K + 1, self.M + 1), dtype=float)
+        self.R_sa = np.zeros((self.M + 1, self.K + 1), dtype=float)
 
         self._build_transition_and_reward_matrices()
 
     def _build_transition_and_reward_matrices(self):
         """
-        Build transition probability matrix P and expected reward matrix R.
+        Build transition probability matrix P and expected reward R_sa.
         
         For each state s and action a:
         1. Compute post-order inventory: inv_pre = min(M, s + a)
@@ -165,7 +167,7 @@ class InventoryMDP:
            - Compute cost: holding_cost * next_inv + shortage_cost * unmet + order_cost * a
            - Reward = -cost (cost minimization → reward maximization)
            - Accumulate: P[s, a, next_inv] += p_d
-           - Accumulate: R[s, a, next_inv] += p_d * reward
+           - Accumulate: R_sa[s, a] += p_d * reward
         
         After accumulation, normalize P so each row sums to 1.0.
         """
@@ -198,8 +200,8 @@ class InventoryMDP:
                     # Accumulate transition probability
                     self.P[s, a, next_inv] += p_d
                     
-                    # Accumulate expected reward (weighted by probability)
-                    self.R[s, a, next_inv] += p_d * reward
+                    # Accumulate expected reward directly per (s,a) pair
+                    self.R_sa[s, a] += p_d * reward
 
         # Normalize transition probabilities to sum to 1.0 for each (s, a) pair
         row_sums = self.P.sum(axis=2, keepdims=True)
