@@ -86,3 +86,4 @@ class TestSimulatePolicy:
             expected = metrics['fulfilled_demand'] / metrics['total_demand']
             assert abs(metrics['service_level'] - expected) < 1e-10
 
+
