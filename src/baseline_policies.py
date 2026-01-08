@@ -1,10 +1,12 @@
 """
 baseline_policies.py
 
-Heuristic inventory policies for comparison with optimal MDP policies.
+Heuristic inventory policies for baseline comparison.
 
-These policies serve as baselines to evaluate the performance of MDP-derived
-optimal policies. They implement common inventory management heuristics.
+This module implements common heuristic inventory management policies that serve
+as baselines for evaluating the performance of MDP-derived optimal policies.
+These heuristics are widely used in practice and provide a benchmark against
+which to compare the optimal dynamic programming solutions.
 """
 
 from __future__ import annotations
@@ -13,26 +15,27 @@ from typing import Callable
 
 def make_sS_policy(s: int, S: int) -> Callable[[int], int]:
     """
-    Factory for an (s, S) policy (also known as two-bin policy).
+    Create an (s, S) policy function (also known as a two-bin policy).
 
-    The (s, S) policy is a threshold-based heuristic:
-    - If current stock level x ≤ s (reorder point), order up to S (order-up-to level)
-    - Otherwise, order 0
-
-    This is a widely used heuristic in inventory management.
+    The (s, S) policy is a threshold-based heuristic that is widely used in
+    inventory management. When the current stock level falls at or below the
+    reorder point s, the policy orders enough to bring inventory up to the
+    order-up-to level S. Otherwise, no order is placed.
 
     Parameters
     ----------
     s : int
-        Reorder point (threshold). Must be >= 0.
+        Reorder point (threshold). When inventory falls to s or below, an order
+        is triggered. Must be >= 0.
     S : int
-        Order-up-to level. Must be >= s.
+        Order-up-to level. The policy orders enough to reach this level when
+        inventory is at or below s. Must be >= s.
 
     Returns
     -------
     policy_fn : Callable[[int], int]
-        Policy function that maps state (inventory level) to action (order quantity).
-        policy_fn(state) -> action (int)
+        Policy function that maps inventory level (state) to order quantity
+        (action). The function takes a state and returns an action.
 
     Examples
     --------
@@ -53,7 +56,7 @@ def make_sS_policy(s: int, S: int) -> Callable[[int], int]:
         if stock < 0:
             raise ValueError(f"Stock level must be >= 0, got {stock}")
         if stock <= s:
-            # Order quantity to reach S
+            # Order enough to bring inventory up to level S
             return max(S - stock, 0)
         return 0
 
@@ -62,21 +65,22 @@ def make_sS_policy(s: int, S: int) -> Callable[[int], int]:
 
 def fixed_order_policy(order_quantity: int) -> Callable[[int], int]:
     """
-    Factory for a fixed-order quantity policy.
+    Create a fixed-order quantity policy function.
 
-    Always orders a fixed quantity, regardless of current inventory level.
-    This is a simple heuristic for comparison.
+    This simple heuristic policy always orders the same fixed quantity,
+    regardless of the current inventory level. While not adaptive, it provides
+    a straightforward baseline for comparison with more sophisticated policies.
 
     Parameters
     ----------
     order_quantity : int
-        Fixed order quantity. Must be >= 0.
+        Fixed order quantity to place in every period. Must be >= 0.
 
     Returns
     -------
     policy_fn : Callable[[int], int]
-        Policy function that always returns order_quantity.
-        policy_fn(state) -> action (int)
+        Policy function that always returns the fixed order quantity,
+        regardless of the input state.
 
     Examples
     --------
@@ -99,21 +103,24 @@ def fixed_order_policy(order_quantity: int) -> Callable[[int], int]:
 
 def reorder_to_level_policy(target_level: int) -> Callable[[int], int]:
     """
-    Factory for a reorder-to-level policy.
+    Create a reorder-to-level policy function.
 
-    Always orders enough to reach a target inventory level, if current
-    inventory is below the target.
+    This policy orders enough inventory to reach a target level whenever the
+    current inventory is below that target. If inventory is already at or
+    above the target, no order is placed. This is a simple threshold policy
+    that maintains inventory around a desired level.
 
     Parameters
     ----------
     target_level : int
-        Target inventory level. Must be >= 0.
+        Target inventory level to maintain. The policy orders to reach this
+        level when inventory is below it. Must be >= 0.
 
     Returns
     -------
     policy_fn : Callable[[int], int]
-        Policy function that orders to reach target_level.
-        policy_fn(state) -> action (int)
+        Policy function that orders enough to reach the target level when
+        inventory is below it, and orders nothing otherwise.
 
     Examples
     --------
